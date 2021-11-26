@@ -5,7 +5,7 @@ import sys
 from dataloader import STFT
 from utils import get_crm, show_params, show_model, visualize_mask
 import torch.nn.functional as F
-# from conv_stft import ConvSTFT, ConviSTFT 
+from conv_stft import ConvSTFT, ConviSTFT 
 
 from complexnn import ComplexConv2d, ComplexConvTranspose2d, NavieComplexLSTM, complex_cat, ComplexBatchNorm
 
@@ -63,9 +63,9 @@ class DCCRN(nn.Module):
 
         fix=True
         self.fix = fix
-        # self.stft = ConvSTFT(self.win_len, self.win_inc, fft_len, self.win_type, 'complex', fix=fix)
-        # self.istft = ConviSTFT(self.win_len, self.win_inc, fft_len, self.win_type, 'complex', fix=fix)
-        self.stft = STFT(fft_len, win_inc , win_len)
+        self.stft = ConvSTFT(self.win_len, self.win_inc, fft_len, self.win_type, 'complex', fix=fix)
+        self.istft = ConviSTFT(self.win_len, self.win_inc, fft_len, self.win_type, 'complex', fix=fix)
+        # self.stft = STFT(fft_len, win_inc , win_len)
         
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
@@ -150,10 +150,11 @@ class DCCRN(nn.Module):
             self.enhance.flatten_parameters()
 
     def forward(self, inputs, lens=None):
-        # specs = self.stft(inputs)
-        # real = specs[:,:self.fft_len//2+1]
-        # imag = specs[:,self.fft_len//2+1:]
-        real, imag = self.stft.wav2spec(inputs)
+        specs = self.stft(inputs)
+        real = specs[:,:self.fft_len//2+1]
+        imag = specs[:,self.fft_len//2+1:]
+        # real, imag = self.stft.wav2spec(inputs)
+        
         spec_mags = torch.sqrt(real**2+imag**2+1e-8)
         spec_mags = spec_mags
         spec_phase = torch.atan2(imag, real)
@@ -228,15 +229,13 @@ class DCCRN(nn.Module):
         elif self.masking_mode == 'R':
             real, imag = real*mask_real, imag*mask_imag 
         
-        out_spec = torch.cat([real, imag], 1)
-        return out_spec
-        # return wav and spec originally 
-        # out_wav = self.istft(out_spec)
+        out_spec = torch.cat([real, imag], 1) 
+        out_wav = self.istft(out_spec)
          
-        # out_wav = torch.squeeze(out_wav, 1)
-        # #out_wav = torch.tanh(out_wav)
-        # out_wav = torch.clamp_(out_wav,-1,1)
-        # return out_spec,  out_wav
+        out_wav = torch.squeeze(out_wav, 1)
+        #out_wav = torch.tanh(out_wav)
+        out_wav = torch.clamp_(out_wav,-1,1)
+        return out_spec,  out_wav
 
     def get_params(self, weight_decay=0.0):
             # add L2 penalty
