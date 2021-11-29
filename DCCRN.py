@@ -280,11 +280,10 @@ class DCCRN(nn.Module):
         mix_spec = self.stft(mix_wav)
         clean_spec = self.stft(clean_wav)
         target = get_crm(mix_spec, clean_spec)
-        loss = 0
-        for i in range(len(model_output)):
-            loss += F.mse_loss(model_output[i], target[i][:,:-1])
+        real_loss = F.mse_loss(model_output[0], target[0][:,:-1])
+        imag_loss = F.mse_loss(model_output[1], target[1][:,:-1])
 
-        return loss
+        return real_loss, imag_loss
             
 
 def remove_dc(data):
