@@ -31,25 +31,16 @@ def show_model(nnet):
             print(m)
     print("=" * 98)
 
-def get_crm(y, s, masking_mode='E'):
-    """
-    y: noisy spectrogram
-    s: clean spectrogram
-    """
-    mask_real = (y.real * s.real + y.imag * s.imag) / (y.real**2 + y.imag**2)
-    mask_imag = (y.real * s.imag - y.imag * s.real) / (y.real**2 + y.imag**2)
-
-    if masking_mode == 'E':
-        mask_mags = (mask_real**2+mask_imag**2)**0.5
-        real_phase = mask_real/(mask_mags+1e-8)
-        imag_phase = mask_imag/(mask_mags+1e-8)
-        mask_phase = torch.atan2(imag_phase, real_phase) 
-        mask_mags = torch.tanh(mask_mags)
-        return mask_mags, mask_phase
-
-    else:
-        return mask_real + 1j * mask_imag
 
 def visualize_mask(mask):
     mask_mag = mask[0][0]
     plt.imshow(mask_mag)
+
+def spec2complex(x, fft_len):
+    """
+    convert input to torch complexed tensor
+    """
+    real = x[:,:fft_len//2+1]
+    imag = x[:,fft_len//2+1:]
+
+    return torch.complex(real, imag)

@@ -3,7 +3,7 @@ import torch.nn as nn
 import os
 import sys
 from dataloader import STFT
-from utils import get_crm, show_params, show_model, visualize_mask
+from utils import show_params, show_model, spec2complex, visualize_mask
 import torch.nn.functional as F
 from conv_stft import ConvSTFT, ConviSTFT 
 
@@ -23,9 +23,10 @@ class DCCRN(nn.Module):
                     win_type='hanning',
                     masking_mode='E',
                     use_clstm=False,
-                    use_cbn = False,
+                    use_cbn=False,
                     kernel_size=5,
-                    kernel_num=[16,32,64,128,256,256]
+                    kernel_num=[16,32,64,128,256,256],
+                    out_mask=True
                 ):
         ''' 
             
@@ -55,6 +56,7 @@ class DCCRN(nn.Module):
         self.kernel_num = [2]+kernel_num 
         self.masking_mode = masking_mode
         self.use_clstm = use_clstm
+        self.out_mask =out_mask
         
         #bidirectional=True
         bidirectional=False
@@ -206,36 +208,40 @@ class DCCRN(nn.Module):
         #    print('decoder', out.size())
         mask_real = out[:,0]
         mask_imag = out[:,1] 
-        mask_real = F.pad(mask_real, [0,0,1,0])
-        mask_imag = F.pad(mask_imag, [0,0,1,0])
         
-        if self.masking_mode == 'E' :
-            mask_mags = (mask_real**2+mask_imag**2)**0.5
-            real_phase = mask_real/(mask_mags+1e-8)
-            imag_phase = mask_imag/(mask_mags+1e-8)
-            mask_phase = torch.atan2(
-                            imag_phase,
-                            real_phase
-                        ) 
+        if self.out_mask:
+            return mask_real, mask_imag
+        else:
+            mask_real = F.pad(mask_real, [0,0,1,0])
+            mask_imag = F.pad(mask_imag, [0,0,1,0])
+            
+            if self.masking_mode == 'E' :
+                mask_mags = (mask_real**2+mask_imag**2)**0.5
+                real_phase = mask_real/(mask_mags+1e-8)
+                imag_phase = mask_imag/(mask_mags+1e-8)
+                mask_phase = torch.atan2(
+                                imag_phase,
+                                real_phase
+                            ) 
 
-            #mask_mags = torch.clamp_(mask_mags,0,100) 
-            mask_mags = torch.tanh(mask_mags)
-            est_mags = mask_mags*spec_mags 
-            est_phase = spec_phase + mask_phase
-            real = est_mags*torch.cos(est_phase)
-            imag = est_mags*torch.sin(est_phase) 
-        elif self.masking_mode == 'C':
-            real,imag = real*mask_real-imag*mask_imag, real*mask_imag+imag*mask_real
-        elif self.masking_mode == 'R':
-            real, imag = real*mask_real, imag*mask_imag 
-        
-        out_spec = torch.cat([real, imag], 1) 
-        out_wav = self.istft(out_spec)
-         
-        out_wav = torch.squeeze(out_wav, 1)
-        #out_wav = torch.tanh(out_wav)
-        out_wav = torch.clamp_(out_wav,-1,1)
-        return out_spec,  out_wav
+                #mask_mags = torch.clamp_(mask_mags,0,100) 
+                mask_mags = torch.tanh(mask_mags)
+                est_mags = mask_mags*spec_mags 
+                est_phase = spec_phase + mask_phase
+                real = est_mags*torch.cos(est_phase)
+                imag = est_mags*torch.sin(est_phase) 
+            elif self.masking_mode == 'C':
+                real,imag = real*mask_real-imag*mask_imag, real*mask_imag+imag*mask_real
+            elif self.masking_mode == 'R':
+                real, imag = real*mask_real, imag*mask_imag 
+            
+            out_spec = torch.cat([real, imag], 1) 
+            out_wav = self.istft(out_spec)
+            
+            out_wav = torch.squeeze(out_wav, 1)
+            #out_wav = torch.tanh(out_wav)
+            out_wav = torch.clamp_(out_wav,-1,1)
+            return out_spec,  out_wav
 
     def get_params(self, weight_decay=0.0):
             # add L2 penalty
@@ -270,6 +276,17 @@ class DCCRN(nn.Module):
             b,d,t = inputs.shape 
             return torch.mean(torch.abs(inputs-gth_spec))*d
 
+    def mask_mse_loss(self, model_output, mix_wav, clean_wav):
+        mix_spec = self.stft(mix_wav)
+        clean_spec = self.stft(clean_wav)
+        target = get_crm(mix_spec, clean_spec)
+        loss = 0
+        for i in range(len(model_output)):
+            loss += F.mse_loss(model_output[i], target[i][:,:-1])
+
+        return loss
+            
+
 def remove_dc(data):
     mean = torch.mean(data, -1, keepdim=True) 
     data = data - mean
@@ -292,6 +309,29 @@ def si_snr(s1, s2, eps=1e-8):
     noise_norm = l2_norm(e_nosie, e_nosie)
     snr = 10*torch.log10((target_norm)/(noise_norm+eps)+eps)
     return torch.mean(snr)
+
+def get_crm(y, s, masking_mode='E'):
+    """
+    y: noisy spectrogram
+    s: clean spectrogram
+    """
+    if not torch.is_complex(y):
+        fft_len = y.shape[1]-2
+        y = spec2complex(y, fft_len)
+        s = spec2complex(s, fft_len)
+    mask_real = (y.real * s.real + y.imag * s.imag) / (y.real**2 + y.imag**2)
+    mask_imag = (y.real * s.imag - y.imag * s.real) / (y.real**2 + y.imag**2)
+
+    if masking_mode == 'E':
+        mask_mags = (mask_real**2+mask_imag**2)**0.5
+        real_phase = mask_real/(mask_mags+1e-8)
+        imag_phase = mask_imag/(mask_mags+1e-8)
+        mask_phase = torch.atan2(imag_phase, real_phase) 
+        mask_mags = torch.tanh(mask_mags)
+        return mask_mags, mask_phase
+
+    else:
+        return [mask_real, mask_imag]
 
 def test_complex():
     torch.manual_seed(20)

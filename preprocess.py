@@ -41,4 +41,4 @@ def gen_sorted_json(data_path, json_fn='sort_filename'):
         f.write(json_dump)
 
 if __name__ == '__main__':
-    gen_sorted_json('E:\DNS-Challenge\gen_dataset')
+    gen_sorted_json('./gen_dataset')

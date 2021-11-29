@@ -157,6 +157,6 @@ def test_ifft2():
 
 
 if __name__ == '__main__':
-    test_fft()
-    # test_ifft1()
+    # test_fft()
+    test_ifft1()
     # test_ifft2()
