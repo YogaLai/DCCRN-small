@@ -1,10 +1,11 @@
 import torch
 import argparse
-from DCCRN import DCCRN
+from DCCRN_TCN import DCCRN
 import soundfile as sf
 from dataloader import DNSDataset
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+import os
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -23,33 +24,46 @@ if __name__ == '__main__':
 
     writer = SummaryWriter('logs/' + args.exp_name)
 
+    if not os.path.isdir('savemodel/' + args.exp_name):
+        os.makedirs('savemodel/' + args.exp_name)
+
     train_loader = torch.utils.data.DataLoader(DNSDataset(args.json_path), batch_size=args.batch_size, shuffle=True)
-    model = DCCRN(rnn_units=256, masking_mode='E',use_clstm=False).cuda()
+    model = DCCRN(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
     optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999))
     start_epoch = 0
     iter = 0 
 
     for epoch in range(start_epoch, args.num_epochs):
+        total_loss = 0
         with tqdm(total=len(train_loader.dataset)) as pbar:
             for mix, clean, noise in train_loader:
                 optimizer.zero_grad()
                 mix, clean = mix.cuda(), clean.cuda()
-                output = model(mix.cuda())  # [B, fft//2, 4803]
-                real_loss, imag_loss = model.mask_mse_loss(output, mix, clean)
-                loss = real_loss + imag_loss
+                outputs = model(mix.cuda())  # [B, fft//2, 4803]
+                loss = model.loss(outputs[1], clean, loss_mode='SI-SNR')
                 loss.backward()
                 optimizer.step()
 
-                writer.add_scalar('Train_iter/real_loss', real_loss.data, iter)
-                writer.add_scalar('Train_iter/imag_loss', imag_loss.data, iter)
+                writer.add_scalar('Train_iter/loss', loss.data, iter)
                 iter += 1
 
                 pbar.set_description(
-                f"real_loss: {real_loss.item():.5f}; imag_loss: {imag_loss.item():.5f}"
+                f"real_loss: {loss.item():.5f}"
                 )
                 pbar.update(mix.size(0))
                 # sf.write('input.wav', mix[0].detach().numpy(),16000)
-                # sf.write('output.wav', output[1][0].detach().numpy(),16000)
+                if iter % 10000==0:
+                    sf.write(f'out_wav/output_{iter}.wav', outputs[1][0].cpu().data.numpy(),16000)
+                total_loss += float(loss)
+
+        writer.add_scalar('Train_epoch/total_loss', total_loss/len(train_loader.dataset), iter)
+        
+
+        torch.save({
+            'epoch': epoch,
+            'state_dict': model.state_dict(),
+            'train_loss': total_loss,
+            },  f'savemodel/{args.exp_name}/checkpoint_{epoch}.tar')
 
 
     

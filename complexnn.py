@@ -159,7 +159,8 @@ class ComplexConvTranspose2d(nn.Module):
                     output_padding=(0,0),
                     causal=False,
                     complex_axis=1,
-                    groups=1
+                    groups=1,
+                    dilation=1
                 ):
         '''
             in_channels: real+imag
@@ -174,8 +175,8 @@ class ComplexConvTranspose2d(nn.Module):
         self.output_padding=output_padding 
         self.groups = groups 
         
-        self.real_conv = nn.ConvTranspose2d(self.in_channels, self.out_channels,kernel_size, self.stride,padding=self.padding,output_padding=output_padding, groups=self.groups)  
-        self.imag_conv = nn.ConvTranspose2d(self.in_channels, self.out_channels,kernel_size, self.stride,padding=self.padding,output_padding=output_padding, groups=self.groups)  
+        self.real_conv = nn.ConvTranspose2d(self.in_channels, self.out_channels,kernel_size, self.stride,padding=self.padding,output_padding=output_padding, groups=self.groups, dilation=dilation)  
+        self.imag_conv = nn.ConvTranspose2d(self.in_channels, self.out_channels,kernel_size, self.stride,padding=self.padding,output_padding=output_padding, groups=self.groups, dilation=dilation)  
         self.complex_axis=complex_axis        
 
         nn.init.normal_(self.real_conv.weight,std=0.05)

@@ -8,7 +8,7 @@ def gen_sorted_json(data_path, json_fn='sort_filename'):
     mix = [] 
     clean = []
     noise = []
-    for fn in os.listdir(os.path.join(data_path, 'noisy')):
+    for fn in os.listdir(os.path.join(data_path, 'noisy/')):
         id = fn.split('fileid_')[1].split('.')[0]
         data_dict[id]=os.path.join(data_path, 'noisy/'+fn)
     
@@ -41,4 +41,4 @@ def gen_sorted_json(data_path, json_fn='sort_filename'):
         f.write(json_dump)
 
 if __name__ == '__main__':
-    gen_sorted_json('./gen_dataset')
+    gen_sorted_json('/home/peter/gen_dataset_100h', 'sort_filename_100h')
