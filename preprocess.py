@@ -41,4 +41,4 @@ def gen_sorted_json(data_path, json_fn='sort_filename'):
         f.write(json_dump)
 
 if __name__ == '__main__':
-    gen_sorted_json('/home/peter/gen_dataset_100h', 'sort_filename_100h')
+    gen_sorted_json('dns_dataset/gen_dataset_10s_100h', 'sort_filename_10s_100h')

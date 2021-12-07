@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from torch.utils import data
 import json
 import soundfile as sf
+import numpy as np
 
 def load_wav(path, sr=16000):
    wav, _ = librosa.load(path, sr=sr)
@@ -51,7 +52,7 @@ class DNSDataset(data.Dataset):
 
     dataset_name = "DNS"
 
-    def __init__(self, json_path):
+    def __init__(self, json_path, sample_rate=16000, frame_dur=37.5):
 
         super(DNSDataset, self).__init__()
         with open(json_path, "r") as f:
@@ -60,6 +61,8 @@ class DNSDataset(data.Dataset):
         self.mix = filename_json['mix']
         self.clean = filename_json['clean']
         self.noise = filename_json['noise']
+        self.sample_rate = sample_rate
+        self.frame_dur = frame_dur
 
     def __len__(self):
         return len(self.mix)
@@ -69,13 +72,18 @@ class DNSDataset(data.Dataset):
         Returns:
             mixture, vstack([source_arrays])
         """
+        win = int( self.frame_dur / 1000 * self.sample_rate)
         # Load mixture
-        x = torch.from_numpy(sf.read(self.mix[idx], dtype="float32")[0])
+        x = sf.read(self.mix[idx], dtype="float32")[0]
+        x = torch.tensor(x)
+        # x = torch.tensor(np.split(x, int(len(x) / win)))
         # Load clean
-        speech = torch.from_numpy(sf.read(self.clean[idx], dtype="float32")[0])
+        speech = sf.read(self.clean[idx], dtype="float32")[0]
+        speech = torch.tensor(speech)
+        # speech = torch.tensor(np.split(speech, int(len(speech) / win)))
         # Load noise
-        noise = torch.from_numpy(sf.read(self.noise[idx], dtype="float32")[0])
-        return x, speech, noise
+        # noise = torch.from_numpy(sf.read(self.noise[idx], dtype="float32")[0])
+        return x, speech
 
 if __name__ == '__main__':
     # torch stft test 

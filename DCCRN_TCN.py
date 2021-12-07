@@ -72,7 +72,7 @@ class DCCRN(nn.Module):
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
         for idx in range(len(self.kernel_num)-1):
-            dilation_size = 2**idx
+            dilation_size = 1 if idx==0 else 2*idx
             self.encoder.append(
                 nn.Sequential(
                     #nn.ConstantPad2d([0, 0, 0, 0], 0),
@@ -289,7 +289,7 @@ class DCCRN(nn.Module):
         imag_loss = F.mse_loss(model_output[1], target[1][:,:-1])
 
         return real_loss, imag_loss
-            
+
 
 def remove_dc(data):
     mean = torch.mean(data, -1, keepdim=True) 
