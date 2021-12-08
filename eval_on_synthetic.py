@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--test_dir", type=str, default='dns_dataset/test_set/synthetic', help="Test directory including wav files"
 )
-parser.add_argument("--exp_dir", default="evaluate_wavs_split_frame/", help="Experiment root")
+parser.add_argument("--exp_dir", default="evaluate_wavs_split_frame_lr_sched/", help="Experiment root")
 parser.add_argument("--loadmodel", type=str, help="checkpoint path")
 parser.add_argument(
     "--n_save_ex", type=int, default=50, help="Number of audio examples to save, -1 means all"

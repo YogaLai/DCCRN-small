@@ -60,7 +60,7 @@ class DNSDataset(data.Dataset):
 
         self.mix = filename_json['mix']
         self.clean = filename_json['clean']
-        self.noise = filename_json['noise']
+        # self.noise = filename_json['noise']
         self.sample_rate = sample_rate
         self.frame_dur = frame_dur
 

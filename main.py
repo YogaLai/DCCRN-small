@@ -9,12 +9,12 @@ import os
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--json_path',            type=str,   help='path to the filenames text file', required=True)
+    parser.add_argument('--json_path',            type=str,   help='path to the filenames json file', required=True)
+    parser.add_argument('--val_json_path',            type=str,   help='path to the validation filenames json file', required=True)
     parser.add_argument('--batch_size',                type=int,   help='batch size', default=2)
     parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=20)
     parser.add_argument('--lr',             type=float,   help='learning rate', default=1e-4)
     parser.add_argument('--exp_name',             type=str,   help='experiment name', default='')
-    parser.add_argument('--loadmodel', help='load model')
     parser.add_argument('--cal_batch_size', type=int, default=4, help='batch_size is the size of loading batch. cal_batch_size is the number of caluation')
     parser.add_argument('--loadmodel', type=str, help="checkpoint path")
     parser.add_argument('--seed', type=int, default=100, metavar='S',
@@ -30,17 +30,25 @@ if __name__ == '__main__':
         os.makedirs('savemodel/' + args.exp_name)
 
     train_loader = torch.utils.data.DataLoader(DNSDataset(args.json_path), batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(DNSDataset(args.val_json_path), batch_size=args.batch_size, shuffle=True)
     model = DCCRN(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
-    optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999))
+    optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5)
     start_epoch = 0
     iter = 0 
     # frame_dur = int(37.5 / 1000 * 16000)
 
-    
+    if args.loadmodel:
+        ckt = torch.load(args.loadmodel)
+        model.load_state_dict(ckt['state_dict'])
+        start_epoch = ckt['epoch'] + 1
+        iter = int(start_epoch * len(train_loader.dataset) / args.batch_size) + 1
+        print('load model successfully')    
 
     for epoch in range(start_epoch, args.num_epochs):
         total_loss = 0
         with tqdm(total=len(train_loader.dataset)) as pbar:
+            model.train()
             for mix, clean in train_loader:
                 mix = mix.view(mix.size(0)*args.cal_batch_size, mix.size(1)//args.cal_batch_size)
                 clean = clean.view(clean.size(0)*args.cal_batch_size, clean.size(1)//args.cal_batch_size)
@@ -57,24 +65,44 @@ if __name__ == '__main__':
                 loss = model.loss(outputs[1], clean, loss_mode='SI-SNR')
                 loss.backward()
                 optimizer.step()
+
                 writer.add_scalar('Train_iter/loss', loss.data, iter)
                 iter += 1
 
                 total_loss += float(loss)
 
                 pbar.set_description(
-                f"real_loss: {loss.item():.5f}"
+                f"loss: {loss.item():.5f}"
                 )
                 pbar.update(mix.size(0)//args.cal_batch_size)
-                    
 
-        writer.add_scalar('Train_epoch/total_loss', total_loss/len(train_loader.dataset)/4, iter)
+        with tqdm(total=len(val_loader.dataset)) as pbar:
+            model.eval()
+            total_val_loss = 0
+            for mix, clean in val_loader:
+                with torch.no_grad():
+                    mix, clean = mix.cuda(), clean.cuda()
+                    outputs = model(mix)  # [B, fft//2, 4803]
+                    val_loss = model.loss(outputs[1], clean, loss_mode='SI-SNR')
+                    total_val_loss += float(val_loss)
+
+                    pbar.set_description(
+                    f"val_loss: {val_loss.item():.5f}"
+                    )
+                    pbar.update(mix.size(0))
+
+            total_val_loss /= len(val_loader.dataset)
+
+        scheduler.step(total_val_loss)
+        writer.add_scalar('Train_epoch/total_loss', total_loss/len(train_loader.dataset)/4, epoch)
+        writer.add_scalar('Val_epoch/total_loss', total_val_loss, epoch)
         
-
         torch.save({
             'epoch': epoch,
             'state_dict': model.state_dict(),
             'train_loss': total_loss,
+            'scheduler': scheduler,
+            'optimizer': optimizer.state_dict()
             },  f'savemodel/{args.exp_name}/checkpoint_{epoch}.tar')
 
 
