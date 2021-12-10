@@ -15,7 +15,7 @@ if __name__ == '__main__':
     parser.add_argument('--val_json_path',            type=str,   help='path to the validation filenames json file', required=True)
     parser.add_argument('--batch_size',                type=int,   help='batch size', default=2)
     parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=20)
-    parser.add_argument('--lr',             type=float,   help='learning rate', default=1e-4)
+    parser.add_argument('--lr',             type=float,   help='learning rate', default=1e-3)
     parser.add_argument('--exp_name',             type=str,   help='experiment name', default='')
     parser.add_argument('--cal_batch_size', type=int, default=4, help='batch_size is the size of loading batch. cal_batch_size is the number of caluation')
     parser.add_argument('--loadmodel', type=str, help="checkpoint path")
@@ -39,10 +39,11 @@ if __name__ == '__main__':
     else:
         model = DCCRN(rnn_units=256, masking_mode='E', out_mask=False).cuda()
 
-    optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5)
     start_epoch = 0
     iter = 0 
+    best_pesq = 0
     # frame_dur = int(37.5 / 1000 * 16000)
 
     if args.loadmodel:
@@ -50,6 +51,9 @@ if __name__ == '__main__':
         model.load_state_dict(ckt['state_dict'])
         start_epoch = ckt['epoch'] + 1
         iter = int(start_epoch * len(train_loader.dataset) / args.batch_size) + 1
+        # optimizer.load_state_dict(ckt['optimizer'])
+        # scheduler = ckt['scheduler']
+        # best_pesq = ckt['best_pesq']
         print('load model successfully')    
 
     for epoch in range(start_epoch, args.num_epochs):
@@ -82,22 +86,31 @@ if __name__ == '__main__':
                 f"loss: {loss.item():.5f}"
                 )
                 pbar.update(mix.size(0)//args.cal_batch_size)
-                break
 
         total_val_loss = validate_pesq(model, val_loader)
         total_val_loss /= len(val_loader.dataset)
 
         scheduler.step(total_val_loss)
         writer.add_scalar('Train_epoch/total_loss', total_loss/len(train_loader.dataset)/4, epoch)
-        writer.add_scalar('Val_epoch/total_loss', total_val_loss, epoch)
+        writer.add_scalar('Val_epoch/pesq', total_val_loss, epoch)
         
+        if total_val_loss > best_pesq:
+            best_pesq = total_val_loss
+            torch.save({
+                'epoch': epoch,
+                'state_dict': model.state_dict(),
+                'best_pesq': best_pesq
+            },  f'savemodel/{args.exp_name}/checkpoint_best.tar')
+
         torch.save({
             'epoch': epoch,
             'state_dict': model.state_dict(),
             'train_loss': total_loss,
             'scheduler': scheduler,
-            'optimizer': optimizer.state_dict()
-            },  f'savemodel/{args.exp_name}/checkpoint_{epoch}.tar')
-
+            'optimizer': optimizer.state_dict(),
+            'best_pesq': best_pesq
+        },  f'savemodel/{args.exp_name}/checkpoint_{epoch}.tar')
+        
+            
 
     
