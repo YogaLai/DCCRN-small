@@ -7,8 +7,7 @@ from dataloader import DNSDataset
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
-
-from validate import validate_sisnr
+from validate import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -20,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name',             type=str,   help='experiment name', default='')
     parser.add_argument('--cal_batch_size', type=int, default=4, help='batch_size is the size of loading batch. cal_batch_size is the number of caluation')
     parser.add_argument('--loadmodel', type=str, help="checkpoint path")
-    parser.add_argument('--model_name', type=str, help="tcn")
+    parser.add_argument('--model_name', type=str, default="tcn")
     parser.add_argument('--seed', type=int, default=100, metavar='S',
                         help='random seed (default: 1)')
     args = parser.parse_args()
@@ -34,7 +33,7 @@ if __name__ == '__main__':
         os.makedirs('savemodel/' + args.exp_name)
 
     train_loader = torch.utils.data.DataLoader(DNSDataset(args.json_path), batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(DNSDataset(args.val_json_path), batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(DNSDataset(args.val_json_path), batch_size=1, shuffle=False)
     if args.model_name == 'tcn':
         model = DCTCAD(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
     else:
@@ -83,8 +82,9 @@ if __name__ == '__main__':
                 f"loss: {loss.item():.5f}"
                 )
                 pbar.update(mix.size(0)//args.cal_batch_size)
+                break
 
-        total_val_loss = validate_sisnr(model, val_loader)
+        total_val_loss = validate_pesq(model, val_loader)
         total_val_loss /= len(val_loader.dataset)
 
         scheduler.step(total_val_loss)
