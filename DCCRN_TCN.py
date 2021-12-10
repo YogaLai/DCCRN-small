@@ -11,7 +11,7 @@ from complexnn import ComplexConv2d, ComplexConvTranspose2d, NavieComplexLSTM, c
 
 
 
-class DCCRN(nn.Module):
+class DCTCAD(nn.Module):
 
     def __init__(
                     self, 
@@ -35,7 +35,7 @@ class DCCRN(nn.Module):
 
         '''
 
-        super(DCCRN, self).__init__()
+        super(DCTCAD, self).__init__()
 
         # for fft 
         self.win_len = win_len

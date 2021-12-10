@@ -9,7 +9,8 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 from pprint import pprint
-from DCCRN_TCN import DCCRN
+from DCCRN import DCCRN
+from DCCRN_TCN import DCTCAD
 
 from asteroid.metrics import get_metrics
 
@@ -25,6 +26,7 @@ parser.add_argument(
     "--n_save_ex", type=int, default=50, help="Number of audio examples to save, -1 means all"
 )
 parser.add_argument("--cuda", action="store_true")
+parser.add_argument('--model_name', type=str, help="tcn")
 
 # ALL_METRICS = ["si_sdr", "sdr", "sir", "sar", "stoi", "pesq"]
 ALL_METRICS = ["pesq"]
@@ -33,7 +35,10 @@ COMPUTE_METRICS = ALL_METRICS
 
 def main(conf):
     # load trained model
-    model = DCCRN(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False)
+    if args.model_name == 'tcn':
+        model = DCTCAD(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
+    else:
+        model = DCCRN(rnn_units=256, masking_mode='E', out_mask=False).cuda()
     if args.cuda:
         model = model.cuda()
     ckt = torch.load(args.loadmodel)

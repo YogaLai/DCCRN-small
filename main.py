@@ -1,11 +1,14 @@
 import torch
 import argparse
-from DCCRN_TCN import DCCRN
+from DCCRN_TCN import DCTCAD
+from DCCRN import DCCRN
 import soundfile as sf
 from dataloader import DNSDataset
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
+
+from validate import validate_sisnr
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -17,6 +20,7 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name',             type=str,   help='experiment name', default='')
     parser.add_argument('--cal_batch_size', type=int, default=4, help='batch_size is the size of loading batch. cal_batch_size is the number of caluation')
     parser.add_argument('--loadmodel', type=str, help="checkpoint path")
+    parser.add_argument('--model_name', type=str, help="tcn")
     parser.add_argument('--seed', type=int, default=100, metavar='S',
                         help='random seed (default: 1)')
     args = parser.parse_args()
@@ -31,7 +35,11 @@ if __name__ == '__main__':
 
     train_loader = torch.utils.data.DataLoader(DNSDataset(args.json_path), batch_size=args.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(DNSDataset(args.val_json_path), batch_size=args.batch_size, shuffle=True)
-    model = DCCRN(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
+    if args.model_name == 'tcn':
+        model = DCTCAD(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
+    else:
+        model = DCCRN(rnn_units=256, masking_mode='E', out_mask=False).cuda()
+
     optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5)
     start_epoch = 0
@@ -76,22 +84,8 @@ if __name__ == '__main__':
                 )
                 pbar.update(mix.size(0)//args.cal_batch_size)
 
-        with tqdm(total=len(val_loader.dataset)) as pbar:
-            model.eval()
-            total_val_loss = 0
-            for mix, clean in val_loader:
-                with torch.no_grad():
-                    mix, clean = mix.cuda(), clean.cuda()
-                    outputs = model(mix)  # [B, fft//2, 4803]
-                    val_loss = model.loss(outputs[1], clean, loss_mode='SI-SNR')
-                    total_val_loss += float(val_loss)
-
-                    pbar.set_description(
-                    f"val_loss: {val_loss.item():.5f}"
-                    )
-                    pbar.update(mix.size(0))
-
-            total_val_loss /= len(val_loader.dataset)
+        total_val_loss = validate_sisnr(model, val_loader)
+        total_val_loss /= len(val_loader.dataset)
 
         scheduler.step(total_val_loss)
         writer.add_scalar('Train_epoch/total_loss', total_loss/len(train_loader.dataset)/4, epoch)
