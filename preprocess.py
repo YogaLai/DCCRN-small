@@ -47,5 +47,41 @@ def gen_sorted_json(data_path, json_fn='sort_filename', get_noise=True):
             json_dump = json.dumps(data)
             f.write(json_dump)
 
+def gen_mix_json(noreverb_path, reverb_path, json_fn):
+    data_dict = collections.OrderedDict()
+    mix = [] 
+    clean = []
+    for fn in os.listdir(os.path.join(noreverb_path, 'noisy/')):
+        id = fn.split('fileid_')[1].split('.')[0]
+        if int(id) < 15000:
+            data_dict[id]=os.path.join(noreverb_path, 'noisy/'+fn)
+    for fn in os.listdir(os.path.join(reverb_path, 'noisy/')):
+        id = fn.split('fileid_')[2].split('.')[0]
+        if int(id) >= 15000:
+            data_dict[id]=os.path.join(reverb_path, 'noisy/'+fn)
+    data_dict = sorted(data_dict.items(), key=lambda x: int(x[0])) # sort by key
+    for k, v in data_dict:
+        mix.append(v)
+    
+    data_dict = collections.OrderedDict()
+    for fn in os.listdir(os.path.join(noreverb_path, 'clean')):
+        id = fn.split('fileid_')[1].split('.')[0]
+        if int(id) < 15000:
+            data_dict[id]=os.path.join(noreverb_path, 'clean/'+fn)
+    for fn in os.listdir(os.path.join(reverb_path, 'clean')):
+        id = fn.split('fileid_')[1].split('.')[0]
+        if int(id) >= 15000:
+            data_dict[id]=os.path.join(reverb_path, 'clean/'+fn)
+    data_dict = sorted(data_dict.items(), key=lambda x: int(x[0])) # sort by key
+    for k, v in data_dict:
+        clean.append(v)
+    
+    assert len(mix) == len(clean)
+    with open(json_fn + '.json', 'w') as f:
+        data = {'mix': mix, 'clean': clean}
+        json_dump = json.dumps(data)
+        f.write(json_dump)
+
 if __name__ == '__main__':
-    gen_sorted_json('dns_dataset/test_set/synthetic/no_reverb', 'sort_filename_tesetset_noreverb', get_noise=False)
+    # gen_sorted_json('E:/DNS-Challenge/gen_testset_30s_250h', 'sort_filename_30s_250h', get_noise=False)
+    gen_mix_json('E:/DNS-Challenge/gen_testset_30s_250h', 'E:/DNS-Challenge/gen_reverb_dataset_30s_250h', 'sort_filename_reverb_mix_30s_125h_125h')
