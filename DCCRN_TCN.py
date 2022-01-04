@@ -3,6 +3,7 @@ import torch.nn as nn
 import os
 import sys
 from dataloader import STFT
+from loss_utils import get_array_mel_loss
 from utils import show_params, show_model, spec2complex, visualize_mask
 import torch.nn.functional as F
 from conv_stft import ConvSTFT, ConviSTFT 
@@ -269,9 +270,13 @@ class DCTCAD(nn.Module):
        
         if loss_mode == 'MSE':
             b, d, t = inputs.shape 
+            labels = self.stft(labels)
+            # print(inputs[:,0,:])
+            # print(labels[:,0,:])
             labels[:,0,:]=0
             labels[:,d//2,:]=0
-            return F.mse_loss(inputs, labels, reduction='mean')*d
+            return F.mse_loss(inputs, labels)
+            # return F.mse_loss(inputs, labels, reduction='mean')*d
 
         elif loss_mode == 'SI-SNR':
             #return -torch.mean(si_snr(inputs, labels))
@@ -280,6 +285,42 @@ class DCTCAD(nn.Module):
             gth_spec, gth_phase = self.stft(labels) 
             b,d,t = inputs.shape 
             return torch.mean(torch.abs(inputs-gth_spec))*d
+        elif loss_mode == 'SI-SNR+RMSE':
+            est_spec, wav = inputs[0], inputs[1]
+            sisnr = -(si_snr(wav, labels))
+
+            clean_specs = self.stft(labels)
+            clean_real = clean_specs[:, :self.fft_len // 2 + 1]
+            clean_imag = clean_specs[:, self.fft_len // 2 + 1:]
+            # clean_mags = torch.sqrt(clean_real ** 2 + clean_imag ** 2 + 1e-7)
+
+            est_real = est_spec[:, :self.fft_len // 2 + 1]
+            est_imag = est_spec[:, self.fft_len // 2 + 1:]
+            # est_clean_mags = torch.sqrt(est_real ** 2 + est_imag ** 2 + 1e-7)
+            # mse = torch.mean((est_clean_mags - clean_mags)**2, axis=1)
+            # rmse = torch.mean(torch.sqrt(mse + 1e-7))
+            mse = torch.mean((clean_real - est_real)**2, axis=1)
+            rmse = torch.mean(torch.sqrt(mse + 1e-7))
+            mse = torch.mean((clean_imag - est_imag)**2, axis=1)
+            rmse = rmse + torch.mean(torch.sqrt(mse + 1e-7))
+
+            print(sisnr, rmse)
+            return sisnr, rmse
+        elif loss_mode == 'SI-SNR+LMS':
+            est_spec, wav = inputs[0], inputs[1]
+            sisnr = -(si_snr(wav, labels))
+
+            clean_specs = self.stft(labels)
+            clean_real = clean_specs[:, :self.fft_len // 2 + 1]
+            clean_imag = clean_specs[:, self.fft_len // 2 + 1:]
+            clean_mags = torch.sqrt(clean_real ** 2 + clean_imag ** 2 + 1e-7)
+
+            est_real = est_spec[:, :self.fft_len // 2 + 1]
+            est_imag = est_spec[:, self.fft_len // 2 + 1:]
+            est_clean_mags = torch.sqrt(est_real ** 2 + est_imag ** 2 + 1e-7)
+            
+            mel_loss = get_array_mel_loss(clean_mags, est_clean_mags)
+            return sisnr, mel_loss
 
     def mask_mse_loss(self, model_output, mix_wav, clean_wav):
         mix_spec = self.stft(mix_wav)

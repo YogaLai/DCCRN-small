@@ -13,6 +13,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--json_path',            type=str,   help='path to the filenames json file', required=True)
     parser.add_argument('--val_json_path',            type=str,   help='path to the validation filenames json file', required=True)
+    parser.add_argument('--val_reverb_json_path',            type=str,   help='path to the reverb validation filenames json file', required=True)
     parser.add_argument('--batch_size',                type=int,   help='batch size', default=2)
     parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=20)
     parser.add_argument('--lr',             type=float,   help='learning rate', default=1e-3)
@@ -34,6 +35,7 @@ if __name__ == '__main__':
 
     train_loader = torch.utils.data.DataLoader(DNSDataset(args.json_path), batch_size=args.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(DNSDataset(args.val_json_path), batch_size=1, shuffle=False)
+    val_reverb_loader = torch.utils.data.DataLoader(DNSDataset(args.val_reverb_json_path), batch_size=1, shuffle=False)
     if args.model_name == 'tcn':
         model = DCTCAD(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
     else:
@@ -51,9 +53,9 @@ if __name__ == '__main__':
         model.load_state_dict(ckt['state_dict'])
         start_epoch = ckt['epoch'] + 1
         iter = int(start_epoch * len(train_loader.dataset) / args.batch_size) + 1
-        # optimizer.load_state_dict(ckt['optimizer'])
-        # scheduler = ckt['scheduler']
-        # best_pesq = ckt['best_pesq']
+        optimizer.load_state_dict(ckt['optimizer'])
+        scheduler = ckt['scheduler']
+        best_pesq = ckt['best_pesq']
         print('load model successfully')    
 
     for epoch in range(start_epoch, args.num_epochs):
@@ -88,18 +90,22 @@ if __name__ == '__main__':
                 pbar.update(mix.size(0)//args.cal_batch_size)
 
         total_val_loss = validate_pesq(model, val_loader)
+        total_val_reverb_loss = validate_pesq(model, val_reverb_loader)
         total_val_loss /= len(val_loader.dataset)
+        total_val_reverb_loss /= len(val_reverb_loader.dataset)
 
         scheduler.step(total_val_loss)
         writer.add_scalar('Train_epoch/total_loss', total_loss/len(train_loader.dataset)/4, epoch)
         writer.add_scalar('Val_epoch/pesq', total_val_loss, epoch)
+        writer.add_scalar('Val_epoch/reverb_pesq', total_val_reverb_loss, epoch)
         
         if total_val_loss > best_pesq:
             best_pesq = total_val_loss
             torch.save({
                 'epoch': epoch,
                 'state_dict': model.state_dict(),
-                'best_pesq': best_pesq
+                'best_pesq': best_pesq,
+                'reverb_pesq': total_val_reverb_loss
             },  f'savemodel/{args.exp_name}/checkpoint_best.tar')
 
         torch.save({
@@ -108,7 +114,8 @@ if __name__ == '__main__':
             'train_loss': total_loss,
             'scheduler': scheduler,
             'optimizer': optimizer.state_dict(),
-            'best_pesq': best_pesq
+            'best_pesq': best_pesq,
+            'reverb_pesq': total_val_reverb_loss
         },  f'savemodel/{args.exp_name}/checkpoint_{epoch}.tar')
         
             
