@@ -18,15 +18,18 @@ from asteroid.metrics import get_metrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--test_dir", type=str, default='dns_dataset/test_set/synthetic', help="Test directory including wav files"
+    "--test_dir", type=str, default='E:/DNS-Challenge/datasets/test_set/synthetic', help="Test directory including wav files"
 )
-parser.add_argument("--exp_dir", default="evaluate_wavs_split_frame_lr_sched/", help="Experiment root")
+parser.add_argument("--exp_dir", default="evaluate_wavs_mse/", help="Experiment root")
 parser.add_argument("--loadmodel", type=str, help="checkpoint path")
 parser.add_argument(
     "--n_save_ex", type=int, default=50, help="Number of audio examples to save, -1 means all"
 )
 parser.add_argument("--cuda", action="store_true")
-parser.add_argument('--model_name', type=str, help="tcn")
+parser.add_argument('--model_name', type=str, default="tcn")
+parser.add_argument('--seed', type=int, default=100, metavar='S',
+                        help='random seed (default: 1)')
+
 
 # ALL_METRICS = ["si_sdr", "sdr", "sir", "sar", "stoi", "pesq"]
 ALL_METRICS = ["pesq"]
@@ -34,6 +37,8 @@ COMPUTE_METRICS = ALL_METRICS
 
 
 def main(conf):
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
     # load trained model
     if args.model_name == 'tcn':
         model = DCTCAD(rnn_units=256, masking_mode='E',use_clstm=False, out_mask=False).cuda()
